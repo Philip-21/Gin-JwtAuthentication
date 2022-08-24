@@ -72,7 +72,7 @@ func Signup() gin.HandlerFunc {
 		user.Refresh_token = &refreshToken
 
 		//insert the user items into the database
-		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
+		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user) //insert a single document into the collection one at a time()
 		if insertErr != nil {
 			msg := fmt.Sprintf("User item was not created ")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
