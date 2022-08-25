@@ -2,6 +2,7 @@ package routes
 
 import (
 	"go-jwt/handlers"
+	"go-jwt/middleware"
 
 	"github.com/gin-gonic/gin"
 )

@@ -8,6 +8,7 @@ import (
 	"go-jwt/models"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -150,8 +151,6 @@ func Login() gin.HandlerFunc {
 	}
 }
 
-func GetUsers()
-
 func GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userId := c.Param("user_id") //( refers to the id /users/:user_id)
@@ -173,5 +172,72 @@ func GetUser() gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, user)
+	}
+}
+
+///can only accessed by the admin
+func GetUsers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		err := helper.CheckUserType(c, "ADMIN")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+
+		//----working on pages  ///
+		//c.Query returns the keyed url query value if it exists
+		//otherwise it returns an empty string,
+		//e.g c.Query("name") == "Manu"
+		recordPerPage, err := strconv.Atoi(c.Query("recordPerPage"))
+		if err != nil || recordPerPage < 1 {
+			recordPerPage = 10 ///we want 10 records on the firstpage
+		}
+		//first page
+		page, err1 := strconv.Atoi((c.Query("page")))
+		if err1 != nil || page < 1 {
+			page = 1
+		}
+		//the actual pagination
+		startIndex := (page - 1) * recordPerPage
+		startIndex, err = strconv.Atoi(c.Query("startIndex"))
+
+		matchStage := bson.D{{"$match", bson.D{{}}}}
+		//---------building datapipeline (creating dif var to be parsed for aggregation)-----
+		groupStage := bson.D{{"$group", bson.D{
+			//groups data based on the id
+			{"_id", bson.D{{"_id", "null"}}},
+
+			//find the total items in the database
+			//create a totalcount
+			//calculate the sum of all the records
+			{"total_count", bson.D{{"$sum", 1}}},
+
+			//pushes everything(grouped data) to the root
+			{"data", bson.D{{"$push", "$$ROOT"}}}}}}
+
+		//defines which data point gets to the user (frontend)
+		projectStage := bson.D{
+			{"$project", bson.D{
+				{"_id", 0},
+				{"total_count", 1},
+				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
+			}},
+		}
+		//call the aggregate function
+		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{ //Aggregate executes an aggregate command against the collection
+			matchStage, groupStage, projectStage,
+		})
+		defer cancel()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while listing user items "})
+		}
+		//returns the list of users
+		var allUsers []bson.M //M is an unordered representation of a BSON document, used when the order deosnt matter
+		if err = result.All(ctx, &allUsers); err != nil {
+			log.Fatal(err)
+		}
+		c.JSON(http.StatusOK, allUsers[0]) //send all users to frontend
+
 	}
 }
