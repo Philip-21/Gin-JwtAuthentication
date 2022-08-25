@@ -1,12 +1,16 @@
 package helper
 
 import (
+	"context"
 	"go-jwt/database"
 	"log"
+
 	"os"
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -52,5 +56,42 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 		return
 	}
 	return token, refreshToken, err
+
+}
+
+func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string) {
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+
+	var updateObj primitive.D //D is an ordered representation of a BSON document,used when the order of the elements matters, such as MongoDB command documents
+
+	//when user logs in a new token gets generated
+	//creating the updated objects
+	updateObj = append(updateObj, bson.E{"token", signedToken})
+	updateObj = append(updateObj, bson.E{"refresh_token", signedRefreshToken})
+
+	Updated_at, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+	updateObj = append(updateObj, bson.E{"updated_at", Updated_at})
+
+	upsert := true
+	//filtering usig the user id
+	filter := bson.H{"user_id": userId}
+	opt := options.UpateOptions{
+		Upsert: &upsert,
+	}
+
+	//updating the user collection from database
+	_, err := userCollection.UpdateOne(
+		ctx,
+		filter,
+		bson.D{
+			{"$set", updateObj},
+		},
+		&opt,
+	)
+	defer cancel()
+
+	if err != nil {
+		log.Panic(err)
+	}
 
 }
