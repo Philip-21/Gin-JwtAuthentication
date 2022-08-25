@@ -15,14 +15,30 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 var validate = validator.New()
 
-func HashPassword()
+func HashPassword(password string) string {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		log.Panic(err)
+	}
+	return string(bytes)
+}
 
-func Verifypassword()
+func Verifypassword(userPassword string, providedPassword string) (bool, string) {
+	err := bcrypt.CompareHashAndPassword([]byte(providedPassword), []byte(userPassword))
+	check := true
+	var msg string
+	if err != nil {
+		msg = fmt.Sprintf("email or password is incorrect ")
+		check = false
+	}
+	return check, msg
+}
 
 func Signup() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -47,17 +63,24 @@ func Signup() gin.HandlerFunc {
 			log.Panic(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error while checking for email"})
 		}
+
+		password := HashPassword(user.Password)
+		user.Password = password
+
 		countphone, err := userCollection.CountDocuments(ctx, bson.H{"phone": user.Phone})
 		defer cancel()
 		if err != nil {
 			log.Panic(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error while checking for phone number"})
+			return
 		}
 		if countemail > 0 {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "email already exists"})
+			return
 		}
 		if countphone > 0 {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "PHone number exists alredy"})
+			return
 		}
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
@@ -83,7 +106,49 @@ func Signup() gin.HandlerFunc {
 	}
 }
 
-func Login()
+func Login() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var user models.User
+		//a varialble declared when data exists in db
+		var foundUser models.User
+
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		//db login action
+		err := userCollection.FindOne(ctx, bson.H{"email": user.Email}).Decode(&foundUser)
+		defer cancel()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "email or password incorrect"})
+			return
+		}
+		passwordIsValid, msg := Verifypassword(user.Password, foundUser.Password)
+		defer cancel()
+		if passwordIsValid != true {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+		//additional validations
+		if &foundUser.Email == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
+			return
+		}
+		token, refreshToken, err := helper.GenerateAllTokens(*&foundUser.Email, *&foundUser.First_name, *&foundUser.Last_name, *&foundUser.User_type, *&foundUser.User_id)
+		if err != nil {
+			return
+		}
+		helper.UpdateAllTokens(token, refreshToken, foundUser.User_id)
+		userCollection.FindOne(ctx, bson.H{"user_id": foundUser.User_id}).Decode(&foundUser)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, foundUser)
+	}
+}
 
 func GetUsers()
 
