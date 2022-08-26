@@ -214,23 +214,22 @@ func GetUsers() gin.HandlerFunc {
 			{"total_count", bson.D{{"$sum", 1}}},
 
 			//pushes everything(grouped data) to the root
-			{"data", bson.D{{"$push", "$$ROOT"}}}}}}
+			{"data", bson.D{{"$push", "$$ROOT"}}},
+		}}}
 
 		//defines which data point gets to the user (frontend)
 		projectStage := bson.D{
 			{"$project", bson.D{
 				{"_id", 0},
 				{"total_count", 1},
-				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
-			}},
-		}
+				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}}}}}
 		//call the aggregate function
 		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{ //Aggregate executes an aggregate command against the collection
-			matchStage, groupStage, projectStage,
-		})
+			matchStage, groupStage, projectStage})
 		defer cancel()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while listing user items "})
+			return
 		}
 		//returns the list of users
 		var allUsers []bson.M //M is an unordered representation of a BSON document, used when the order deosnt matter

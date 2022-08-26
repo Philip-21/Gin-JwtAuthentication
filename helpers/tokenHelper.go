@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 //class for taking in the details and generating a token
@@ -104,7 +105,7 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	upsert := true
 	//filtering usig the user id
 	filter := bson.H{"user_id": userId}
-	opt := options.UpateOptions{
+	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
 
